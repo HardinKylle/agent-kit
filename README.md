@@ -9,7 +9,8 @@ roles/        Canonical role briefs (one per teammate)
   reviewer · qa-tester · design-critic · scribe · file-finder
 templates/
   MODELS.md           model → role mapping + token strategy
-  LOOP.md             the standard milestone loop + gates
+  LOOP.md             the standard milestone loop (the flow)
+  RULES.md            standing rules (role discipline, gates, convergence, visibility)
   CHANGELOG-template.md
 bin/
   ask-codex.sh        drive one Codex turn (impl/reviewer), live + logged
@@ -20,7 +21,7 @@ bin/
 Orchestrator (Opus) routes; **Researcher** (Sonnet) looks OUTSIDE at the web; **Reviewer** (Codex) looks INSIDE at the code; Implementer (Codex) writes; QA (Sonnet) + Design Critic (Opus) verify behavior & taste from real screenshots; Scribe (Haiku) keeps the audit log; File-Finder (Haiku) does cheap search. See [MODELS.md](templates/MODELS.md).
 
 ## The loop
-research → architect → implement → review → **verify behavior (not just build)** → record → commit → push → deploy. See [LOOP.md](templates/LOOP.md).
+research → architect → implement → review → **verify behavior (not just build)** → record → commit → push → deploy. See [LOOP.md](templates/LOOP.md) for the flow and [RULES.md](templates/RULES.md) for the standing rules.
 
 ## Core principles (hard-won)
 1. "Done" = observed running behavior; a green build is not done.
