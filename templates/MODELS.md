@@ -2,6 +2,9 @@
 
 Principle: **the cheapest model that can do the job.** Judgment/taste/code get strong models; mechanical work gets cheap ones. Subagents keep heavy reading out of the main context.
 
+`team.config.yaml` is the source of truth for role names, aliases, models, and gate profiles. Keep this
+file explanatory; update the config first when routing changes.
+
 | Role | Model | Why |
 |------|-------|-----|
 | Orchestrator | Claude **Opus** | coordination + final judgment |
@@ -16,6 +19,12 @@ Principle: **the cheapest model that can do the job.** Judgment/taste/code get s
 | File-Finder | Claude **Haiku** / Explore | mechanical search & navigation |
 
 User preference encoded here: **Gemini for the UI seats (frontend build + design critique); Codex for the code seats (implement + review + QA/run-tests); Claude only for orchestration + the rare judgment seats (architect/research) + cheap Haiku grunt.** Keeps the Claude main thread thin; pushes heavy build/verify onto the Codex + Gemini subscriptions.
+
+> **HARD RULE (RULES §1b): Codex never writes UI/CSS.** UI implementation is a Gemini Frontend seat
+> (`ask-gemini.sh`), on the Pro subscription (unmetered). Putting UI on Codex is the worst trade in
+> the kit — it is slow at CSS AND it spends the metered budget that should guard the logic/review/QA
+> seats. Logic → Codex, UI → Gemini, and they run in parallel. Design feedback loops Critic ⇄ Gemini
+> directly. Only a project with NO meaningful UI folds the Frontend seat (announce it).
 
 > QA-on-Codex: Codex IS multimodal — `codex exec -i <shot.png> -- "<prompt>"` (verified it reads a
 > screenshot). So QA on Codex runs the objective checks (build/vitest/console-errors) AND can view the

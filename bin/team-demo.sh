@@ -1,140 +1,120 @@
 #!/usr/bin/env bash
-# team-demo.sh — replay a realistic milestone with FULL agent replies (not summaries),
-# so the transcript pane looks like a real Opus/Codex/Sonnet build conversation.
+# team-demo.sh — replay the intended pane style:
+# orchestrator prompt → filtered agent response → changed files/verdicts.
 set -uo pipefail
 PROJECT="${1:?usage: team-demo.sh <project>}"
 T="$(cd "$(dirname "$0")" && pwd)/team.sh"
 S()   { bash "$T" set "$PROJECT" "$@"; }
 BLD() { bash "$T" build "$PROJECT" "$@"; }
-MSG() { bash "$T" msg "$PROJECT" "$@"; }   # role model [to]  (body on stdin)
+MSG() { bash "$T" msg "$PROJECT" "$@"; }       # role model [to]  (body on stdin)
+H()   { bash "$T" handoff "$PROJECT" "$@"; }   # from to milestone [body]
 P()   { sleep "${1:-1}"; }
 
 bash "$T" init "$PROJECT"
 
-# ── Orchestrator opens the milestone ───────────────────────────────────────
-S orchestrator routing "open M3"
-MSG orchestrator Opus architect <<'EOF'
-Milestone M3: wire the step grid to the audio engine. Constraints: 16 steps,
-Tone.js transport, must stay 60fps with 64 cells. Architect — give me the module
-split and the state shape before anyone writes code.
+# ── Orchestrator chooses a mode and sends the actual task prompt ───────────
+S orchestrator routing "M3 mode + handoff"
+bash "$T" mode "$PROJECT" M3 logic "audio-state change; reviewer required; no UI styling"
+H orchestrator implementer M3 <<'EOF'
+Task: wire the step grid to the audio engine.
+Scope: audio engine + grid state only. Do not touch CSS.
+Success: play/stop does not stack scheduled repeats; build passes.
+Handoff: end with changed files, checks, and READY FOR REVIEW.
 EOF
 P 2
 
-# ── Architect (Opus) — full proposal ───────────────────────────────────────
-S architect working "module layout"
-MSG architect Opus implementer <<'EOF'
-Proposal — split simulation from rendering so the audio clock never blocks paint:
-
-  src/audio/engine.ts     Tone.Transport wrapper; schedule() reads steps[] each tick
-  src/state/useGrid.ts    Zustand store: steps: boolean[16], bpm, playing, current
-  src/ui/Grid.tsx         pure render of steps + current playhead; dispatches toggle
-
-Key calls:
- 1. Store holds ONLY serializable state (boolean[]), not Tone nodes — keeps it testable.
- 2. engine subscribes to the store; on each 16n tick it triggers synths for active
-    steps and setState({current}) so the playhead is derived, not pushed per-cell.
- 3. Toggling a cell mutates steps[i] immutably; engine reads the latest on next tick.
-
-Trade-off I'm rejecting: storing Tone nodes in Zustand. It couples render to audio
-and makes the store unserializable (kills presets in M5). Implementer — push back if
-the per-tick setState causes re-render churn; we may need a ref for `current`.
-EOF
-S architect done "proposed layout"; P 3
-
-# ── Implementer (Codex) — full reply + diff ────────────────────────────────
-S implementer working "wire grid -> audio"
+# ── Implementer response: normal prose, no raw diff/code ───────────────────
+S implementer working "wire grid playback"
 MSG implementer Codex reviewer <<'EOF'
-Implemented per the split. One pushback landed: per-tick setState({current}) DID
-cause the whole Grid to re-render 16x/sec. Fixed by keeping `current` in a ref and
-only re-rendering the single active cell via a tiny <Playhead/> subscriber.
+I checked the existing grid state first so the audio clock would use the current pattern without
+coupling Tone nodes into the store. The implementation keeps the transport wrapper responsible for
+scheduling and stores the repeat id so cleanup is explicit.
 
-  diff --git a/src/audio/engine.ts  (+96)
-    + transport.scheduleRepeat((time) => {
-    +   const { steps } = useGrid.getState();
-    +   steps.forEach((on, i) => { if (on) synth.triggerAttackRelease("C2", "16n", time); });
-    +   currentRef.current = (currentRef.current + 1) % 16;
-    + }, "16n");
+Changed files:
+- M src/audio/engine.ts — schedules active steps and clears the repeat id on stop/unmount
+- M src/state/useGrid.ts — exposes the current pattern read path used by the engine
 
-  diff --git a/src/ui/Grid.tsx       (+71 -14)
-    - {steps.map((on,i) => <Cell active={i===current} .../>)}   // re-rendered all
-    + {steps.map((on,i) => <Cell on={on} index={i} onToggle={toggle} />)}
-    + <Playhead/>   // subscribes to currentRef, moves a single absolutely-positioned bar
+Checks:
+- npm run build: pass
 
-Build is green locally. Reviewer — flagging the synth is mono; rapid steps may clip
-the tail. Want me to pool voices now or defer to polish?
+READY FOR REVIEW
 EOF
-S implementer done "M3 patch"; P 3
+bash "$T" post "$PROJECT" implementer "CHANGES vs HEAD — 2 files changed, +84/-12 | M:src/audio/engine.ts M:src/state/useGrid.ts"
+S implementer done "ready for review"; P 2
 
-# ── Reviewer (Codex) — full critique ───────────────────────────────────────
-S reviewer working "reading diff"
+# ── Orchestrator prompt to reviewer ────────────────────────────────────────
+H orchestrator reviewer M3 <<'EOF'
+Review the M3 diff for correctness and leaks.
+Focus: repeated play/stop, cleanup, stale state reads, and missed scope.
+Do not comment on visual taste.
+EOF
+S reviewer working "review M3 diff"; P 1
+
 MSG reviewer Codex implementer <<'EOF'
-Read the diff. Two findings:
+I checked the scheduling path, stop path, and the state read used by the transport. The separation is
+right, but there is one blocker.
 
-  [P0] Visual: an ON step and an OFF step are nearly identical (#2a2a2a vs #303030).
-       On a real screenshot you cannot tell what the pattern is. This fails the
-       "done = observed behavior" gate. Fix the contrast before this counts.
+Findings:
+- P1 src/audio/engine.ts — stop clears the Tone repeat but leaves the animation frame active, so a
+  play/stop loop can leave a stale playhead update running.
 
-  [P1] Leak: scheduleRepeat is registered on mount but never cleared; toggling play
-       twice stacks two repeats → double triggers + a runaway rAF on stop. Add
-       transport.clear(id) + cancelAnimationFrame in the cleanup.
+No UI-scope drift found.
 
-Mono synth tail: DEFER to polish, not a blocker. Sign-off is blocked on P0+P1.
+REVIEWER: FAIL
 EOF
-S reviewer blocked "P0+P1 raised"; P 3
+S reviewer blocked "P1 cleanup"; P 2
 
-# ── Implementer fixes ──────────────────────────────────────────────────────
-S implementer working "fix P0+P1"
+# ── Implementer fix response ───────────────────────────────────────────────
+H orchestrator implementer M3 <<'EOF'
+Fix reviewer P1 only.
+Scope: cleanup path for playhead animation. Do not refactor unrelated engine code.
+EOF
+S implementer working "fix cleanup"; P 1
+
 MSG implementer Codex reviewer <<'EOF'
-Both addressed:
-  P0  ON cell now filled cobalt (#2563EB) with a 1px inset ring; OFF is bare #141414.
-      Contrast ratio 6.1:1 — pattern is unmistakable in the screenshot.
-  P1  Stored the repeat id; cleanup now does transport.clear(id) and
-      cancelAnimationFrame(rafId). Toggling play 5x → exactly one active repeat.
-Re-running build + QA.
-EOF
-S implementer done "P0/P1 fixed"; S reviewer done "sign-off clean"; P 2
+I kept the fix limited to cleanup. The engine now stores the animation frame id beside the repeat id
+and cancels it on stop/unmount.
 
-# ── Gate: build + QA verify on real screenshot ─────────────────────────────
-S orchestrator routing "gate M3"
-BLD "pnpm build … ✓ 412 modules, built in 1.42s"; P 1
-S qa-tester verifying "ui-review screenshot"
-BLD "node ui-review.mjs --url :5173 --name m3 … shot saved, console: 0 errors"
-MSG qa-tester Sonnet orchestrator <<'EOF'
-Behavioral check on the rendered app (not the build):
-  • Loaded :5173, clicked 6 cells in a backbeat pattern — all 6 fill cobalt, clear pattern.
-  • Hit play — playhead bar sweeps left→right, lands on each lit step audibly on the beat.
-  • Toggled play 5x — no double-trigger, no stuck playhead (P1 confirmed fixed).
-  • Console: 0 errors, 0 warnings. Screenshot: artifacts/m3.png.
-Verdict: M3 behavior VERIFIED.
+Changed files:
+- M src/audio/engine.ts — cancels the playhead animation frame during cleanup
+
+Checks:
+- npm run build: pass
+- manual play/stop loop: one active repeat, no stale playhead update
+
+READY FOR REVIEW
 EOF
+bash "$T" post "$PROJECT" implementer "CHANGES vs HEAD — 1 file changed, +9/-2 | M:src/audio/engine.ts"
+S implementer done "P1 fixed"
+bash "$T" verdict "$PROJECT" M3 reviewer converged "cleanup finding fixed"; P 2
+
+# ── QA prompt + response ───────────────────────────────────────────────────
+H orchestrator qa-tester M3 <<'EOF'
+Run objective checks for M3.
+Checks: build and browser behavior.
+Behavior: grid plays active steps, play/stop does not double-trigger, no console errors.
+EOF
+S qa-tester verifying "build + browser check"
+BLD "npm run build … pass"; P 1
+BLD "ui-review --url :5173 --name m3 --viewport desktop,mobile … pass"
+MSG qa-tester Codex orchestrator <<'EOF'
+I ran the build and browser behavior check. The grid rendered, active steps played on the beat, and
+repeated play/stop did not double-trigger.
+
+Artifacts:
+- shots/m3-desktop.png
+- shots/m3-mobile.png
+
+QA: PASS
+EOF
+bash "$T" verdict "$PROJECT" M3 qa-tester pass "build + behavior pass; screenshots clean"
 S qa-tester done "M3 verified"; P 2
 
-# ── Design critic (Opus) — taste pass ──────────────────────────────────────
-S design-critic verifying "judging taste"
-MSG design-critic Opus orchestrator <<'EOF'
-Score 7 → 8. The cobalt fill fixed legibility — pattern reads instantly now. Two
-notes, both NON-blocking (log for polish M6):
-  - Cell radius (8px) feels soft against the brutalist frame; try 2px or 0.
-  - Playhead is 1px and easy to lose at 140bpm; bump to 2px + slight glow.
-Taste is shippable. No P0.
-EOF
-S design-critic done "score 8/10"; P 2
-
-# ── Scribe records, gate passes ────────────────────────────────────────────
-S scribe working "CHANGELOG"
-BLD "git commit 367f294  feat(grid): wire steps to audio engine"
-MSG scribe Haiku orchestrator <<'EOF'
-CHANGELOG ← ## M3 Interactive grid — 2026-06-20
-  What: grid wired to audio; ON fills cobalt, playhead sweeps, no leak.
-  Who: Codex (impl); Codex reviewer (P0/P1); QA Sonnet + Design-Critic Opus (7→8).
-  Why: reviewer P0 — on/off steps were indistinguishable.
-  Verified: build green; screenshot shows pattern + moving playhead; 0 console errors.
-  Commit: 367f294
-EOF
-S scribe done "logged 367f294"
-S orchestrator routing "M3 GATE PASSED → plan M4"
-MSG orchestrator Opus architect <<'EOF'
-M3 passed all gates (build + observed behavior + clean review). Moving on.
-Architect — next is M4: named presets + PNG export. Same drill: layout before code.
+# ── Gate ───────────────────────────────────────────────────────────────────
+bash "$T" gate "$PROJECT" --milestone M3 reviewer qa
+S orchestrator done "M3 gate passed"
+MSG orchestrator Opus user <<'EOF'
+M3 passed in logic mode. Full design/scribe loop was intentionally skipped because this was not a
+visual-risk milestone. Next: decide whether M4 is ui or production mode before routing agents.
 EOF
 P 1

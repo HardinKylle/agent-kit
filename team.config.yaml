@@ -1,0 +1,106 @@
+# agent-kit source of truth for role routing, verdict names, and default gates.
+# Keep docs aligned to this file instead of repeating model assignments by hand.
+
+roles:
+  orchestrator:
+    label: Orchestrator
+    model: Claude Opus
+    runtime: main session
+    aliases: [lead]
+  researcher:
+    label: Researcher
+    model: Claude Sonnet
+    runtime: Claude subagent
+    aliases: [research]
+  architect:
+    label: Architect
+    model: Claude Opus
+    runtime: Claude subagent
+    aliases: [planner]
+  implementer:
+    label: Implementer
+    model: Codex gpt-5.x
+    runtime: bin/ask-codex.sh
+    aliases: [codex]
+  reviewer:
+    label: Code Reviewer
+    model: Codex gpt-5.x
+    runtime: bin/ask-codex.sh
+    aliases: [review]
+  frontend:
+    label: Frontend Developer
+    model: Gemini 3.1 Pro
+    runtime: bin/ask-gemini.sh
+    aliases: [ui, frontend-developer]
+  qa-tester:
+    label: QA / Tester
+    model: Codex gpt-5.x
+    runtime: bin/ask-codex.sh
+    aliases: [qa, tester]
+    verdict_label: QA
+  design-critic:
+    label: Design Critic
+    model: Gemini 3.1 Pro
+    runtime: bin/ask-gemini.sh
+    aliases: [design, critic]
+    verdict_label: DESIGN-CRITIC
+  scribe:
+    label: Scribe
+    model: Claude Haiku
+    runtime: Claude subagent
+    aliases: [doc, docs]
+  file-finder:
+    label: File-Finder
+    model: Claude Haiku / Explore
+    runtime: Claude subagent
+    aliases: [finder, explore]
+
+workflow_modes:
+  tiny:
+    use_when: "copy/config/docs or a one-file low-risk fix"
+    seats: [orchestrator]
+    required_verdicts: []
+    notes: "Run the local check directly; record the mode and summary. No cold seats by default."
+  logic:
+    use_when: "engine/state/API behavior changes without meaningful UI composition work"
+    seats: [implementer, reviewer]
+    required_verdicts: [reviewer]
+    optional_verdicts: [qa-tester]
+    notes: "Add QA when behavior is hard to verify from tests/build alone."
+  ui:
+    use_when: "components/layout/CSS/responsive/micro-interaction changes"
+    seats: [frontend, qa-tester]
+    required_verdicts: [qa-tester]
+    optional_verdicts: [design-critic]
+    notes: "Use Design Critic for layout, visual hierarchy, brand/taste, or regression-sensitive UI."
+  production:
+    use_when: "user-facing milestone, broad refactor, release, deploy, or high-risk work"
+    seats: [researcher, architect, implementer, frontend, reviewer, qa-tester, design-critic, scribe]
+    required_verdicts: [qa-tester, reviewer, scribe]
+    ui_required_verdicts: [qa-tester, reviewer, design-critic, scribe]
+    notes: "Full loop with scoped verdicts, changelog, and commit/deploy discipline."
+
+gate_profiles:
+  prototype:
+    review_rounds: 1
+    design_rounds: 1
+    required_verdicts: [qa-tester]
+    ui_required_verdicts: [qa-tester, design-critic]
+  standard:
+    review_rounds: 3
+    design_rounds: 3
+    required_verdicts: [qa-tester, reviewer]
+    ui_required_verdicts: [qa-tester, reviewer, design-critic]
+  production:
+    review_rounds: 3
+    design_rounds: 3
+    required_verdicts: [qa-tester, reviewer, scribe]
+    ui_required_verdicts: [qa-tester, reviewer, design-critic, scribe]
+
+defaults:
+  workflow_mode: logic
+  gate_profile: standard
+  context_file: .team/CONTEXT.md
+  verdict_dir: .team/verdicts
+  prompt_templates_dir: templates/prompts
+  summary_only_feed: true

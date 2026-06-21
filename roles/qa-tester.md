@@ -12,8 +12,8 @@ its strength. QA judges "does it work / is anything broken" — NOT taste (Desig
 - Behavioral: run `run/shot.mjs` / `bin/ui-review.mjs` and check the run is clean — `OK …` printed, no
   `CONSOLE_ERRORS`, downloads fire if asserted. Codex IS multimodal (`ask-codex.sh … <shot.png>` →
   `codex exec -i`), so QA can ALSO open the shot and confirm the UI actually rendered/changed.
-- Report each check's literal result; a single red check BLOCKS. Post the verdict ending `QA: PASS` /
-  `QA: FAIL` to `.team/feed.log` (the gate greps for it — RULES §4c).
+- Report each check's literal result; a single red check BLOCKS. Record the verdict with
+  `bin/team.sh verdict <project> <milestone> qa-tester pass|fail "reason"` (RULES §4c).
 
 ## Independence
 - QA's visual check (did it render?) is objective and separate from the **Design Critic's** taste

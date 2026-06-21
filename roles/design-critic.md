@@ -12,8 +12,8 @@ Independent visual/UX taste. Reads the actual screenshot and judges it against t
 
 ## How it's driven
 `bin/ask-gemini.sh <project> <prompt-file> design-critic` — point it at the screenshot path inside the
-project (added via `--add-dir`). Post its `DESIGN-CRITIC: PASS/FAIL` verdict to `.team/feed.log`
-(RULES §4c, §5) — the gate greps for that line.
+project (added via `--add-dir`). Record its verdict with
+`bin/team.sh verdict <project> <milestone> design-critic pass|fail "reason"` (RULES §4c).
 
 ## Hard rule
 Be sharp, not agreeable. Name specific elements and why a choice reads as intentional or as slop. Distinctive beats safe. One pass is never enough on a major UI change — loop.

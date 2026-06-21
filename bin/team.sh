@@ -11,7 +11,10 @@
 #   team.sh set   <project> <role> <state> [task]    update one agent's row
 #   team.sh say   <project> <from> <to> <message>    append a hand-off to the live feed
 #   team.sh build <project> <message>                append a build/test line
-#   team.sh gate  <project> <seat...>                pass ONLY if each seat posted "<SEAT>: PASS"
+#   team.sh mode <project> <milestone> <tiny|logic|ui|production> [reason]
+#   team.sh handoff <project> <from> <to> <milestone> [message]  log the actual task brief
+#   team.sh verdict <project> <milestone> <seat> <pass|fail|converged> [summary]
+#   team.sh gate  <project> [--milestone M] <seat...> pass only if each seat passed
 #
 # Render loops (these are the pane commands; you don't call them directly):
 #   team.sh roster <project>   |   team.sh feed <project>   |   team.sh buildlog <project>
@@ -19,17 +22,59 @@
 # State lives in <project>/.team/ : agents.tsv (roster), feed.log, build.log.
 set -uo pipefail
 
-CMD="${1:?usage: team.sh <view|init|set|say|build|roster|feed|buildlog> <project> ...}"
+CMD="${1:?usage: team.sh <view|init|set|say|build|mode|handoff|verdict|gate|roster|feed|buildlog> <project> ...}"
 PROJECT="${2:?missing <project>}"
 PROJECT="$(cd "$PROJECT" 2>/dev/null && pwd || echo "$PROJECT")"
 DIR="$PROJECT/.team"
 ROSTER="$DIR/agents.tsv"
 FEED="$DIR/feed.log"
 BUILD="$DIR/build.log"
+VERDICTS="$DIR/verdicts"
+MODES="$DIR/modes.jsonl"
 mkdir -p "$DIR"
 
 now() { date +%s; }
 ts()  { date +%H:%M:%S; }
+
+norm_seat() {
+  case "$1" in
+    qa|tester) printf 'qa-tester' ;;
+    design|critic) printf 'design-critic' ;;
+    ui|frontend-developer) printf 'frontend' ;;
+    review|code-reviewer) printf 'reviewer' ;;
+    doc|docs) printf 'scribe' ;;
+    lead) printf 'orchestrator' ;;
+    finder|explore) printf 'file-finder' ;;
+    codex) printf 'implementer' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+verdict_label() {
+  case "$(norm_seat "$1")" in
+    qa-tester) printf 'QA' ;;
+    design-critic) printf 'DESIGN-CRITIC' ;;
+    reviewer) printf 'REVIEWER' ;;
+    scribe) printf 'SCRIBE' ;;
+    *) norm_seat "$1" | tr '[:lower:]' '[:upper:]' ;;
+  esac
+}
+
+safe_name() {
+  printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g'
+}
+
+read_body_or_args() {
+  if [[ $# -gt 0 ]]; then
+    printf '%s' "$*"
+  elif [[ ! -t 0 ]]; then
+    cat
+  fi
+}
 
 # ── state colors ───────────────────────────────────────────────────────────
 state_dot() {
@@ -94,8 +139,8 @@ EOF
 
   say)
     FROM="${3:?from}"; TO="${4:?to}"; shift 4; MSG="$*"
-    printf '\033[2;37m[%s]\033[0m \033[1;33m%-13s\033[0m \033[2m→\033[0m \033[1;36m%-13s\033[0m  %s\n' \
-      "$(ts)" "$FROM" "$TO" "$MSG" >> "$FEED"
+    { flock 9; printf '\033[2;37m[%s]\033[0m \033[1;33m%-13s\033[0m \033[2m→\033[0m \033[1;36m%-13s\033[0m  %s\n' \
+      "$(ts)" "$FROM" "$TO" "$MSG" >> "$FEED"; } 9>>"$FEED.lock"
     ;;
 
   msg)
@@ -110,12 +155,71 @@ EOF
     hdr="$(printf '\033[%sm━━━ %s' "$c" "$(echo "$ROLE" | tr a-z A-Z)")"
     [[ -n "$TO" ]] && hdr="$hdr → $(echo "$TO" | tr a-z A-Z)"
     hdr="$(printf '%s \033[2m(%s · %s)\033[0m' "$hdr" "$MODEL" "$(ts)")"
-    { printf '\n%s\n' "$hdr"; cat; printf '\033[0m\n'; } >> "$FEED"
+    { flock 9
+      printf '\n%s\n' "$hdr" >> "$FEED"
+      cat >> "$FEED"
+      printf '\033[0m\n' >> "$FEED"
+    } 9>>"$FEED.lock"
     ;;
 
   build)
     shift 2; MSG="$*"
     printf '[%s] %s\n' "$(ts)" "$MSG" >> "$BUILD"
+    ;;
+
+  handoff)
+    # Human-readable task brief. Use this for the exact Orchestrator → seat prompt,
+    # separate from noisy raw CLI logs.
+    FROM="${3:?from}"; TO="${4:?to}"; MILESTONE="${5:?milestone}"; shift 5
+    BODY="$(read_body_or_args "$@")"
+    { flock 9
+      printf '\n\033[2m[%s]\033[0m \033[1;37mHANDOFF\033[0m \033[1;33m%s\033[0m → \033[1;36m%s\033[0m \033[2m[%s]\033[0m\n' \
+        "$(ts)" "$FROM" "$TO" "$MILESTONE" >> "$FEED"
+      [[ -n "$BODY" ]] && printf '%s\n' "$BODY" >> "$FEED"
+    } 9>>"$FEED.lock"
+    ;;
+
+  mode)
+    # Record the Orchestrator's chosen workflow tier so the team knows which seats
+    # are intentionally used or folded for this milestone.
+    MILESTONE="${3:?milestone}"; MODE="${4:?tiny|logic|ui|production}"
+    shift 4; REASON="$*"
+    case "$MODE" in
+      tiny|logic|ui|production) ;;
+      *) echo "usage: team.sh mode <project> <milestone> <tiny|logic|ui|production> [reason]" >&2; exit 2 ;;
+    esac
+    TS="$(date -u +%FT%TZ)"
+    { flock 9
+      printf '{"ts":"%s","milestone":"%s","mode":"%s","reason":"%s"}\n' \
+        "$TS" "$(json_escape "$MILESTONE")" "$MODE" "$(json_escape "$REASON")" >> "$MODES"
+      printf '\033[2m[%s]\033[0m \033[1morchestrator \033[0m MODE: %s [%s] %s\n' \
+        "$(ts)" "$MODE" "$MILESTONE" "$REASON" >> "$FEED"
+    } 9>>"$FEED.lock"
+    ;;
+
+  verdict)
+    # Structured, milestone-scoped verdict. This prevents an old "QA: PASS" line
+    # from opening a later milestone's gate.
+    MILESTONE="${3:?milestone}"; SEAT="$(norm_seat "${4:?seat}")"; RESULT="${5:?pass|fail|converged}"
+    shift 5; SUMMARY="$*"
+    case "$RESULT" in
+      pass|PASS) RESULT="PASS" ;;
+      fail|FAIL) RESULT="FAIL" ;;
+      converged|CONVERGED) RESULT="CONVERGED" ;;
+      *) echo "usage: team.sh verdict <project> <milestone> <seat> <pass|fail|converged> [summary]" >&2; exit 2 ;;
+    esac
+    mkdir -p "$VERDICTS"
+    SAFE_MILESTONE="$(safe_name "$MILESTONE")"
+    FILE="$VERDICTS/$SAFE_MILESTONE.jsonl"
+    LABEL="$(verdict_label "$SEAT")"
+    TS="$(date -u +%FT%TZ)"
+    SUMMARY_JSON="$(json_escape "$SUMMARY")"
+    { flock 9
+      printf '{"ts":"%s","milestone":"%s","seat":"%s","label":"%s","result":"%s","summary":"%s"}\n' \
+        "$TS" "$(json_escape "$MILESTONE")" "$SEAT" "$LABEL" "$RESULT" "$SUMMARY_JSON" >> "$FILE"
+      printf '\033[2m[%s]\033[0m \033[1m%-13s\033[0m %s: %s [%s] %s\n' \
+        "$(ts)" "$SEAT" "$LABEL" "$RESULT" "$MILESTONE" "$SUMMARY" >> "$FEED"
+    } 9>>"$FEED.lock"
     ;;
 
   post)
@@ -150,6 +254,9 @@ EOF
       /^total [0-9]/ { next }                                  # ls -l total
       /^[dlbcps-][rwxsStT-]{9}/ { next }                       # ls -l permission rows
       /^(apply patch|patch:|new file mode|deleted file|old mode|new mode|rename (from|to)|Binary files)/ { next }
+      /[{};(,][[:space:]]*$/ { next }                          # code: lines ending in { } ; ( ,
+      /^[[:space:]]*(import|export|const|let|var|function|class|return|@media|@import|@keyframes|\.[A-Za-z])/ { next }  # JS/CSS code
+      /^[[:space:]]*[.#&][A-Za-z][A-Za-z0-9 ._:#>~,()%*-]*$/ { next }                       # bare CSS selector
       length($0) > 400 { next }                                # very long = code, drop
       /^[[:space:]]*$/ { next }                                # blanks
       ($0 ~ /[A-Za-z]/ && $0 ~ / /) { print }                 # keep: prose (has words)
@@ -159,21 +266,37 @@ EOF
     ;;
 
   gate)
-    # Mechanical milestone gate (RULES 4c): a milestone passes ONLY when each named
-    # seat's verdict line is physically present in feed.log. The gate is a grep, not
-    # a memory — the Orchestrator literally cannot self-certify.
-    #   team.sh gate <project> <seat...>     e.g.  team.sh gate . qa design-critic
-    # Verdict lines a seat must have posted (via `say`/`msg`): "<SEAT>: PASS"
-    # (REVIEWER may also post "REVIEWER: CONVERGED"). Exit 0 = all present.
+    # Mechanical milestone gate (RULES 4c). With --milestone it reads structured
+    # .team/verdicts/<milestone>.jsonl; without it, it falls back to legacy feed grep.
+    #   team.sh gate <project> --milestone M3 qa design-critic
+    #   team.sh gate <project> qa design-critic      # legacy/global feed fallback
     shift 2
-    [[ $# -gt 0 ]] || { echo "usage: team.sh gate <project> <seat...>" >&2; exit 2; }
+    MILESTONE=""; SEATS=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --milestone|-m) MILESTONE="${2:?missing milestone}"; shift 2 ;;
+        *) SEATS+=("$1"); shift ;;
+      esac
+    done
+    [[ ${#SEATS[@]} -gt 0 ]] || { echo "usage: team.sh gate <project> [--milestone M] <seat...>" >&2; exit 2; }
     touch "$FEED"; missing=0
-    for seat in "$@"; do
-      up="$(echo "$seat" | tr 'a-z' 'A-Z')"
-      if grep -Eq "${up}:[[:space:]]*(PASS|CONVERGED)" "$FEED"; then
+    for raw_seat in "${SEATS[@]}"; do
+      seat="$(norm_seat "$raw_seat")"
+      label="$(verdict_label "$seat")"
+      if [[ -n "$MILESTONE" ]]; then
+        file="$VERDICTS/$(safe_name "$MILESTONE").jsonl"
+        line=""
+        [[ -f "$file" ]] && line="$(grep -E "\"seat\":\"$seat\"" "$file" | tail -n 1 || true)"
+        if [[ "$line" =~ \"result\":\"(PASS|CONVERGED)\" ]]; then
+          printf '\033[1;32m✓ GATE  %-14s PASS  (%s)\033[0m\n' "$seat" "$MILESTONE"
+        else
+          printf '\033[1;31m■ GATE  %-14s MISSING — latest %s verdict is not PASS for %s\033[0m\n' "$seat" "$label" "$MILESTONE"
+          missing=1
+        fi
+      elif grep -Eq "${label}:[[:space:]]*(PASS|CONVERGED)" "$FEED"; then
         printf '\033[1;32m✓ GATE  %-14s PASS\033[0m\n' "$seat"
       else
-        printf '\033[1;31m■ GATE  %-14s MISSING — no "%s: PASS" in feed.log\033[0m\n' "$seat" "$up"
+        printf '\033[1;31m■ GATE  %-14s MISSING — no "%s: PASS" in feed.log\033[0m\n' "$seat" "$label"
         missing=1
       fi
     done

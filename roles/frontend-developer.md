@@ -14,8 +14,8 @@ not just the code.
 - Verify its own work against the running app + breakpoints before handing back.
 
 ## How it's driven
-`bin/ask-gemini.sh <project> <prompt-file> frontend` — first turn starts fresh, later turns `-c` to
-keep context. Findings/diffs stream to `logs/conversation.log`; the orchestrator posts the verdict to
+`bin/ask-gemini.sh <project> <prompt-file> frontend` — fresh by default; pass `--continue` only when
+continuing that same seat's most recent `agy` turn. Findings/diffs stream to `logs/conversation.log`; the orchestrator posts the verdict to
 `.team/feed.log` so the seat is visible (RULES §5).
 
 ## Hard rule
