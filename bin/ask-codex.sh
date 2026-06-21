@@ -2,11 +2,13 @@
 # ask-codex.sh — drive ONE Codex turn (implementer or reviewer), visibly + logged.
 #
 # Usage:
-#   ask-codex.sh <project-dir> <prompt-file> [--reset]
+#   ask-codex.sh <project-dir> <prompt-file> [--reset] [image ...]
 #
 #   <project-dir>  repo Codex operates in (its session is keyed to this dir)
 #   <prompt-file>  file containing the instruction for this turn
 #   --reset        start a fresh Codex session instead of resuming the last one
+#   [image ...]    optional screenshot paths — Codex IS multimodal (`-i`), so QA can
+#                  attach shots and verify the rendered UI itself (only on a fresh turn)
 #
 # Behaviour:
 #   - First turn for a project starts a fresh `codex exec` (with -C <dir>).
@@ -19,14 +21,23 @@
 # every project behaves identically and the orchestrator can watch + detect done.
 set -uo pipefail
 
-PROJECT_DIR="${1:?usage: ask-codex.sh <project-dir> <prompt-file> [--reset]}"
+PROJECT_DIR="${1:?usage: ask-codex.sh <project-dir> <prompt-file> [--reset] [image ...]}"
 PROMPT_FILE="${2:?missing <prompt-file>}"
-RESET="${3:-}"
+shift 2
+RESET=""; IMAGES=()
+for a in "$@"; do
+  case "$a" in
+    --reset) RESET="--reset" ;;
+    *)       IMAGES+=("$a") ;;   # anything else = an image path to attach
+  esac
+done
 
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
 LOG="$LOG_DIR/conversation.log"
 SESSION_FLAG="$PROJECT_DIR/.codex_session_started"
+TEAM="$(cd "$(dirname "$0")" && pwd)/team.sh"   # for feed bookends + live prose stream
+ROLE="${CODEX_ROLE:-codex}"                      # feed tag (set CODEX_ROLE=reviewer|qa-tester|…)
 mkdir -p "$LOG_DIR"
 
 [[ "$RESET" == "--reset" ]] && rm -f "$SESSION_FLAG"
@@ -44,16 +55,24 @@ printf '\033[1;32m◀ CODEX is working...\033[0m\n\n'
 } >> "$LOG"
 
 PROMPT="$(cat "$PROMPT_FILE")"
+# images attach only on a fresh exec (like -C, not valid on resume). `--` ends the -i list.
+IMG_ARGS=()
+(( ${#IMAGES[@]} )) && IMG_ARGS=(-i "${IMAGES[@]}" --)
+
+# feed bookend: start. Full output → LOG (authoritative) + a copy → feedfilter (live prose in pane).
+bash "$TEAM" post "$PROJECT_DIR" "$ROLE" "▶ working" 2>/dev/null || true
+stream() { tee -a "$LOG" | tee >(bash "$TEAM" feedfilter "$PROJECT_DIR" "$ROLE" >/dev/null 2>&1); }
 if [[ -f "$SESSION_FLAG" ]]; then
   codex exec resume --last \
     --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
-    "$PROMPT" 2>&1 | tee -a "$LOG"
+    "$PROMPT" 2>&1 | stream
 else
   touch "$SESSION_FLAG"
   codex exec \
     --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
-    -C "$PROJECT_DIR" "$PROMPT" 2>&1 | tee -a "$LOG"
+    -C "$PROJECT_DIR" "${IMG_ARGS[@]}" "$PROMPT" 2>&1 | stream
 fi
+bash "$TEAM" post "$PROJECT_DIR" "$ROLE" "✓ done" 2>/dev/null || true
 
 echo >> "$LOG"
 bar

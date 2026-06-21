@@ -5,16 +5,32 @@ Principle: **the cheapest model that can do the job.** Judgment/taste/code get s
 | Role | Model | Why |
 |------|-------|-----|
 | Orchestrator | Claude **Opus** | coordination + final judgment |
-| Design Critic | Claude **Opus** | taste was the weak spot — give it the best |
-| Researcher | Claude **Sonnet** | web research; good enough, cheaper than Opus |
-| QA / Tester | Claude **Sonnet** | behavioral checks + screenshot reading |
-| Architect | Claude **Opus** | structural decisions (or fold into Orchestrator) |
-| Implementer | **Codex** (gpt-5.x) | writes the code |
+| Design Critic | **Gemini** (Antigravity) | strong multimodal taste; reads the screenshot directly |
+| Frontend Developer | **Gemini** (Antigravity) | owns the UI layer (components/layout/CSS); works from screenshots |
+| Researcher | Claude **Sonnet** | web research; good enough, cheaper than Opus; rarely invoked |
+| QA / Tester | **Codex** (gpt-5.x) | runs the official checks (build, vitest, behavioral) — text-driven |
+| Architect | Claude **Opus** | structural decisions (rare; or fold into Orchestrator) |
+| Implementer | **Codex** (gpt-5.x) | engine/logic/state code |
 | Code Reviewer | **Codex** (gpt-5.x) | internal code review / bug hunting |
 | Scribe | Claude **Haiku** | structured low-judgment summarization |
 | File-Finder | Claude **Haiku** / Explore | mechanical search & navigation |
 
-User preference encoded here: **Claude for design/orchestration/QA/research/docs; Codex for implementing + reviewing code; Haiku for the cheap grunt work.**
+User preference encoded here: **Gemini for the UI seats (frontend build + design critique); Codex for the code seats (implement + review + QA/run-tests); Claude only for orchestration + the rare judgment seats (architect/research) + cheap Haiku grunt.** Keeps the Claude main thread thin; pushes heavy build/verify onto the Codex + Gemini subscriptions.
+
+> QA-on-Codex: Codex IS multimodal — `codex exec -i <shot.png> -- "<prompt>"` (verified it reads a
+> screenshot). So QA on Codex runs the objective checks (build/vitest/console-errors) AND can view the
+> shot to confirm the UI rendered. The **Design Critic stays Gemini by choice (taste), not capability** —
+> it's the independent visual-taste seat, separate from QA's pass/fail. Run QA as a fresh `--reset`
+> Codex session so it isn't blessing the same context that wrote the code.
+
+## Runtimes
+- **Codex** seats → `bin/ask-codex.sh` (OAuth'd to the Codex account, separate billing).
+- **Gemini** seats → `bin/ask-gemini.sh` (`agy`, OAuth'd to the Google AI Pro subscription — NOT a
+  metered API key). Override the model with `GEMINI_MODEL`; default `Gemini 3.1 Pro (High)`. Available
+  on the Pro plan: Gemini 3.5 Flash (Low/Med/High), Gemini 3.1 Pro (Low/High), Claude Sonnet/Opus 4.6,
+  GPT-OSS 120B (`agy models`).
+- **Claude** seats → `Agent` subagents (this runtime).
+- Fallback: if `agy` is unavailable, the Design Critic falls back to Claude **Opus** (its prior home).
 
 ## Token levers
 - Route file search/navigation to Haiku/Explore — never grep from Opus.

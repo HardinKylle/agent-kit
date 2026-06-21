@@ -11,6 +11,7 @@
 #   team.sh set   <project> <role> <state> [task]    update one agent's row
 #   team.sh say   <project> <from> <to> <message>    append a hand-off to the live feed
 #   team.sh build <project> <message>                append a build/test line
+#   team.sh gate  <project> <seat...>                pass ONLY if each seat posted "<SEAT>: PASS"
 #
 # Render loops (these are the pane commands; you don't call them directly):
 #   team.sh roster <project>   |   team.sh feed <project>   |   team.sh buildlog <project>
@@ -51,10 +52,25 @@ orchestrator	Opus	routing	bootstrapping	$(now)
 architect	Opus	idle	—	$(now)
 implementer	Codex	idle	—	$(now)
 reviewer	Codex	idle	—	$(now)
-qa-tester	Sonnet	idle	—	$(now)
-design-critic	Opus	idle	—	$(now)
+frontend	Gemini	idle	—	$(now)
+qa-tester	Codex	idle	—	$(now)
+design-critic	Gemini	idle	—	$(now)
 scribe	Haiku	idle	—	$(now)
 EOF
+    # Stable shared brief — seats read this instead of re-explaining context in every brief.
+    if [[ ! -f "$DIR/CONTEXT.md" ]]; then
+      cat > "$DIR/CONTEXT.md" <<EOF
+# $(basename "$PROJECT") — shared context (read this first)
+
+WHAT: <one sentence on what the app is / does>
+STACK: <framework + key libs + build cmd>
+URL: <live/preview URL, if any>
+CURRENT milestone: bootstrapping
+
+> Orchestrator keeps the CURRENT line accurate each milestone. Seat briefs point here
+> instead of inlining context. Keep this under ~20 lines.
+EOF
+    fi
     echo "[$(ts)] team initialized for $PROJECT" >> "$FEED"
     ;;
 
@@ -89,7 +105,7 @@ EOF
     case "$ROLE" in
       orchestrator) c='1;37' ;; architect) c='1;35' ;; implementer) c='1;32' ;;
       reviewer) c='1;31' ;; qa-tester) c='1;33' ;; design-critic) c='1;36' ;;
-      scribe) c='1;34' ;; *) c='1;37' ;;
+      frontend) c='1;36' ;; scribe) c='1;34' ;; *) c='1;37' ;;
     esac
     hdr="$(printf '\033[%sm━━━ %s' "$c" "$(echo "$ROLE" | tr a-z A-Z)")"
     [[ -n "$TO" ]] && hdr="$hdr → $(echo "$TO" | tr a-z A-Z)"
@@ -100,6 +116,69 @@ EOF
   build)
     shift 2; MSG="$*"
     printf '[%s] %s\n' "$(ts)" "$MSG" >> "$BUILD"
+    ;;
+
+  post)
+    # Locked, uniformly-formatted feed append. ALL feed writes should route through here so
+    # concurrent writers (multiple seats + orchestrator) can't tear each other's lines (flock),
+    # and the feed reads in one consistent style.
+    #   team.sh post <project> <role> <message...>
+    ROLE="${3:?role}"; shift 3; MSG="$*"
+    { flock 9; printf '\033[2m[%s]\033[0m \033[1m%-13s\033[0m %s\n' "$(ts)" "$ROLE" "$MSG" >> "$FEED"; } 9>>"$FEED.lock"
+    ;;
+
+  feedfilter)
+    # Stream a seat's raw stdout, DROP code/diff/command/metadata noise, and forward the PROSE
+    # (what the agent is thinking/saying) to the feed live — tagged by seat, lock-appended.
+    # Pipe a seat's output into it:   <codex/agy ...> | team.sh feedfilter <project> <role>
+    ROLE="${3:?role}"
+    awk '
+      { gsub(/\033\[[0-9;?]*[a-zA-Z]/, "") }                 # strip ANSI
+      /^OpenAI Codex/ { meta=1; next }                       # codex banner block
+      meta==1 { if ($0 ~ /^-+$/ && ++d>=2){meta=0;d=0} next }
+      /^user$/ { ep=1; next }                                # skip echoed prompt …
+      ep==1 { if ($0 ~ /^codex$/) ep=0; next }               # … until the assistant turn
+      /^### / { next }                                        # our brief headers
+      /^(codex|agy|exec|tokens used|thinking)$/ { next }      # turn/section markers
+      /^\/bin\/bash/ { next }                                 # command echoes
+      /^ *(succeeded|failed) in/ { next }                     # command results
+      /^\?\? / { next }                                        # git status noise
+      /rmcp::transport|AuthorizationRequired/ { next }         # known MCP warning
+      /^(diff --git|index |@@|\+\+\+|--- )/ { next }           # diff headers
+      /^\+/ { next }                                            # diff/code added line
+      /^-[^ ]/ { next }                                         # diff removed line (keep "- " bullets)
+      /^total [0-9]/ { next }                                  # ls -l total
+      /^[dlbcps-][rwxsStT-]{9}/ { next }                       # ls -l permission rows
+      /^(apply patch|patch:|new file mode|deleted file|old mode|new mode|rename (from|to)|Binary files)/ { next }
+      length($0) > 400 { next }                                # very long = code, drop
+      /^[[:space:]]*$/ { next }                                # blanks
+      ($0 ~ /[A-Za-z]/ && $0 ~ / /) { print }                 # keep: prose (has words)
+    ' | while IFS= read -r l; do
+      { flock 9; printf '   \033[2m%-12s│\033[0m %s\n' "$ROLE" "$l" >> "$FEED"; } 9>>"$FEED.lock"
+    done
+    ;;
+
+  gate)
+    # Mechanical milestone gate (RULES 4c): a milestone passes ONLY when each named
+    # seat's verdict line is physically present in feed.log. The gate is a grep, not
+    # a memory — the Orchestrator literally cannot self-certify.
+    #   team.sh gate <project> <seat...>     e.g.  team.sh gate . qa design-critic
+    # Verdict lines a seat must have posted (via `say`/`msg`): "<SEAT>: PASS"
+    # (REVIEWER may also post "REVIEWER: CONVERGED"). Exit 0 = all present.
+    shift 2
+    [[ $# -gt 0 ]] || { echo "usage: team.sh gate <project> <seat...>" >&2; exit 2; }
+    touch "$FEED"; missing=0
+    for seat in "$@"; do
+      up="$(echo "$seat" | tr 'a-z' 'A-Z')"
+      if grep -Eq "${up}:[[:space:]]*(PASS|CONVERGED)" "$FEED"; then
+        printf '\033[1;32m✓ GATE  %-14s PASS\033[0m\n' "$seat"
+      else
+        printf '\033[1;31m■ GATE  %-14s MISSING — no "%s: PASS" in feed.log\033[0m\n' "$seat" "$up"
+        missing=1
+      fi
+    done
+    (( missing == 0 )) || { echo "── milestone BLOCKED: a seat verdict is missing ──" >&2; exit 1; }
+    echo "── milestone GATE OPEN: all seat verdicts present ──"
     ;;
 
   # ── render loops (pane commands) ───────────────────────────────────────────
@@ -153,14 +232,20 @@ EOF
     tmux new-session -d -s "$SES" -x 210 -y 50 "bash '$SELF' feed '$PROJECT'"
     feed=$(tmux list-panes -t "$SES" -F '#{pane_id}' | head -1)
     # roster as a full-width bottom strip
-    tmux split-window -v -l 16 -t "$feed" "bash '$SELF' roster '$PROJECT'"
+    roster=$(tmux split-window -v -l 16 -P -F '#{pane_id}' -t "$feed" "bash '$SELF' roster '$PROJECT'")
     # right column off the feed pane
     right=$(tmux split-window -h -P -F '#{pane_id}' -t "$feed" "bash '$SELF' buildlog '$PROJECT'")
     # if the project has a dev script, give the right column a live dev-server pane on top
+    dev=""
     if grep -q '"dev"' "$PROJECT/package.json" 2>/dev/null; then
-      tmux split-window -v -b -l 18 -t "$right" \
-        "cd '$PROJECT' && echo '── DEV SERVER ──' && exec npm run dev"
+      dev=$(tmux split-window -v -b -l 18 -P -F '#{pane_id}' -t "$right" \
+        "cd '$PROJECT' && echo '── DEV SERVER ──' && exec npm run dev")
     fi
+    # label every pane so they don't all read "Honeydew" and blur together
+    tmux select-pane -t "$feed"   -T ' ① CONVERSATION — agent transcript ' 2>/dev/null || true
+    tmux select-pane -t "$right"  -T ' ② BUILD / VERIFY ' 2>/dev/null || true
+    [[ -n "$dev" ]] && tmux select-pane -t "$dev" -T ' ③ DEV SERVER — localhost ' 2>/dev/null || true
+    tmux select-pane -t "$roster" -T ' ROSTER ' 2>/dev/null || true
     tmux set -t "$SES" pane-border-status top 2>/dev/null || true
     tmux set -t "$SES" pane-border-format ' #{pane_title} ' 2>/dev/null || true
     echo "$SES"

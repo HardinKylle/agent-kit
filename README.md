@@ -5,20 +5,22 @@ A reusable toolkit + standard for running autonomous multi-agent builds (Claude 
 ## What's here
 ```
 roles/        Canonical role briefs (one per teammate)
-  orchestrator · researcher · architect · implementer
-  reviewer · qa-tester · design-critic · scribe · file-finder
+  orchestrator · researcher · architect · implementer · reviewer
+  qa-tester · design-critic · frontend-developer · scribe · file-finder
 templates/
-  MODELS.md           model → role mapping + token strategy
+  MODELS.md           model → role mapping + token strategy + runtimes
   LOOP.md             the standard milestone loop (the flow)
-  RULES.md            standing rules (role discipline, gates, convergence, visibility)
+  RULES.md            standing rules (role discipline, gates, convergence, visibility, context)
   CHANGELOG-template.md
 bin/
-  ask-codex.sh        drive one Codex turn (impl/reviewer), live + logged
+  ask-codex.sh        drive one Codex turn (engine/logic impl + review), live + logged
+  ask-gemini.sh       drive one Gemini turn (frontend dev / design critic) via `agy`, live + logged
+  team.sh             tmux visualizer: feed + roster + build + live dev-server panes
   ui-review.mjs       Playwright: screenshot + console errors + behavioral asserts
 ```
 
 ## The team (separate contexts, right-sized models)
-Orchestrator (Opus) routes; **Researcher** (Sonnet) looks OUTSIDE at the web; **Reviewer** (Codex) looks INSIDE at the code; Implementer (Codex) writes; QA (Sonnet) + Design Critic (Opus) verify behavior & taste from real screenshots; Scribe (Haiku) keeps the audit log; File-Finder (Haiku) does cheap search. See [MODELS.md](templates/MODELS.md).
+Orchestrator (Opus) routes; **Researcher** (Sonnet) looks OUTSIDE at the web; **Reviewer** (Codex) looks INSIDE at the code; **Implementer** (Codex) writes the engine/logic; **Frontend Developer** (Gemini) builds the UI; **Design Critic** (Gemini, multimodal) reads real screenshots and judges taste; QA (Sonnet) verifies behavior; Scribe (Haiku) keeps the audit log; File-Finder (Haiku) does cheap search. Codex seats run via `ask-codex.sh`, Gemini seats via `ask-gemini.sh` (`agy`, on the Google AI Pro subscription). See [MODELS.md](templates/MODELS.md).
 
 ## The loop
 research → architect → implement → review → **verify behavior (not just build)** → record → commit → push → deploy. See [LOOP.md](templates/LOOP.md) for the flow and [RULES.md](templates/RULES.md) for the standing rules.
