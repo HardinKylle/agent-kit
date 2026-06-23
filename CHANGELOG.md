@@ -2,6 +2,28 @@
 
 Maintained by the Scribe. One entry per change.
 
+## Role/model consolidation — fewer seats, one session per role — 2026-06-23
+
+### What
+- Reduced the team to a fixed `(model, session)` per role: Orchestrator (Opus), Researcher (Gemini —
+  all external/net lookup: topics, designs, references), Implementer (Codex, session A — all code incl.
+  UI + fixes), Reviewer (Codex, session B — separate thread, finds bugs), QA (Claude **Sonnet**),
+  Design Critic (Gemini, parallel), Scribe/File-Finder (Haiku).
+- **Removed the Gemini Frontend seat** — the Implementer (Codex) now writes UI/CSS too.
+- **QA moved Codex → Claude Sonnet**, its own persistent session (independent of the Codex author and
+  of Gemini; keeps the Opus Orchestrator out of testing).
+- **Researcher moved Claude Sonnet → Gemini.**
+- RULES §1b is now "one persistent session per role" (Implementer session A ‖ Reviewer session B keep
+  author≠reviewer via separate threads, resumed warm — not via `--reset`). Updated LOOP, MODELS,
+  README, role briefs, and `team.sh` roster/aliases to match.
+
+### Why
+- User asked to cut distributed seats for speed and to stop re-introducing context every call: each
+  role keeps one warm session. Independence is structural (separate session), not from resetting.
+
+### Who
+- Decision = user; encoded into the kit by Orchestrator (Opus). Docs/config + `team.sh` roster.
+
 ## Gemini session isolation, log locking, and ui-review timeout fixes — 2026-06-21
 
 ### What

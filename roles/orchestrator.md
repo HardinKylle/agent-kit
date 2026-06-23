@@ -21,8 +21,8 @@ The single coordinator. Owns the plan, routes work to teammates, integrates resu
 - Full team is available, not mandatory: start with the lightest responsible mode and escalate when
   uncertainty or failures appear.
 - Cheapest capable model per task; keep heavy reading in subagents, not the main thread.
-- **Route by layer, never lump (RULES §1b): logic → Codex, UI → Gemini Frontend, in parallel.
-  Codex never writes CSS. Design feedback loops Critic ⇄ Frontend directly — not through Codex.**
-- Resume a Codex session across review→fix→re-review; avoid cold `--reset` re-reads of the same files.
+- **One persistent session per role (RULES §1b): Implementer (Codex, session A) writes logic + UI;
+  Reviewer (Codex, session B) finds bugs; QA (Sonnet); Researcher + Design Critic (Gemini). Resume
+  each by id, never `--reset` between turns.**
 - Surface CHANGE SUMMARIES (files +/- lines, high-level what) in the feed — never raw diffs/code.
 - Gate new milestones with `team.sh gate <project> --milestone <id> ...`; legacy feed greps are fallback only.

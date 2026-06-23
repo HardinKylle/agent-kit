@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # ask-gemini.sh — drive ONE Antigravity (Gemini) turn, visibly + logged.
 #
-# The Gemini seat covers the FRONTEND DEVELOPER (UI implementation) and the
-# DESIGN CRITIC (it reads screenshots — Gemini is multimodal, verified).
+# The Gemini seats are the RESEARCHER (all external/net lookup) and the DESIGN
+# CRITIC (reads screenshots — Gemini is multimodal, verified).
 #
 # Usage:
 #   ask-gemini.sh <project-dir> <prompt-file> [role] [--continue]
 #
 #   <project-dir>  repo Gemini operates in (added to its workspace)
 #   <prompt-file>  file containing the instruction for this turn
-#   [role]         label for the log header (e.g. design-critic | frontend) default: frontend
+#   [role]         label for the log header (e.g. researcher | design-critic) default: design-critic
 #   --continue     continue the global most-recent agy conversation when safe
 #
 # Behaviour mirrors ask-codex.sh so the orchestrator drives every seat identically:
@@ -26,7 +26,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 PROJECT_DIR="${1:?usage: ask-gemini.sh <project-dir> <prompt-file> [role] [--continue]}"
 PROMPT_FILE="${2:?missing <prompt-file>}"
-ROLE="frontend"
+ROLE="design-critic"
 CONTINUE=""
 RESET=""
 for arg in "${@:3}"; do
@@ -46,7 +46,7 @@ TEAM_MILESTONE="${TEAM_MILESTONE:-${MILESTONE:-turn}}"
 mkdir -p "$LOG_DIR"
 
 # Seat isolation: each Gemini seat tracks its OWN conversation by ID.
-# This prevents one seat bleeding into another (e.g. design-critic and frontend).
+# This prevents one seat bleeding into another (e.g. design-critic and researcher).
 SID_FILE="$PROJECT_DIR/.gemini_session_${ROLE}.id"
 
 [[ -n "$RESET" ]] && rm -f "$SID_FILE"

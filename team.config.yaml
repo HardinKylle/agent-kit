@@ -9,9 +9,10 @@ roles:
     aliases: [lead]
   researcher:
     label: Researcher
-    model: Claude Sonnet
-    runtime: Claude subagent
+    model: Gemini 3.1 Pro
+    runtime: bin/ask-gemini.sh
     aliases: [research]
+    # External facts/web only (own persistent Gemini session).
   architect:
     label: Architect
     model: Claude Opus
@@ -21,29 +22,33 @@ roles:
     label: Implementer
     model: Codex gpt-5.x
     runtime: bin/ask-codex.sh
-    aliases: [codex]
+    aliases: [codex, ui, frontend]
+    # Owns ALL code: logic/engine/state + UI/CSS + APPLYING fixes. Persistent session A
+    # (CODEX_ROLE=implementer → .codex_session_implementer.id).
   reviewer:
     label: Code Reviewer
     model: Codex gpt-5.x
     runtime: bin/ask-codex.sh
     aliases: [review]
-  frontend:
-    label: Frontend Developer
-    model: Gemini 3.1 Pro
-    runtime: bin/ask-gemini.sh
-    aliases: [ui, frontend-developer]
+    # FINDS bugs in the diff. Persistent session B, SEPARATE from the implementer
+    # (CODEX_ROLE=reviewer → .codex_session_reviewer.id) — only ever sees diffs, never the
+    # writer's reasoning, so it stays independent without re-introducing context each turn.
   qa-tester:
     label: QA / Tester
-    model: Codex gpt-5.x
-    runtime: bin/ask-codex.sh
+    model: Claude Sonnet
+    runtime: Claude subagent
     aliases: [qa, tester]
     verdict_label: QA
+    # Own persistent Claude Sonnet session (spawn once, resume via SendMessage). Runs the
+    # official build/test/behavioral checks. Independent of Codex (author) and Gemini.
   design-critic:
     label: Design Critic
     model: Gemini 3.1 Pro
     runtime: bin/ask-gemini.sh
     aliases: [design, critic]
     verdict_label: DESIGN-CRITIC
+    # Own persistent Gemini session. Runs in PARALLEL once the UI shell exists — batch its
+    # findings back to the Implementer instead of blocking every turn.
   scribe:
     label: Scribe
     model: Claude Haiku
@@ -69,13 +74,13 @@ workflow_modes:
     notes: "Add QA when behavior is hard to verify from tests/build alone."
   ui:
     use_when: "components/layout/CSS/responsive/micro-interaction changes"
-    seats: [frontend, qa-tester]
+    seats: [implementer, qa-tester]
     required_verdicts: [qa-tester]
     optional_verdicts: [design-critic]
-    notes: "Use Design Critic for layout, visual hierarchy, brand/taste, or regression-sensitive UI."
+    notes: "Implementer (Codex) writes the UI. Use Design Critic for layout, visual hierarchy, brand/taste, or regression-sensitive UI — run it in parallel once the shell exists."
   production:
     use_when: "user-facing milestone, broad refactor, release, deploy, or high-risk work"
-    seats: [researcher, architect, implementer, frontend, reviewer, qa-tester, design-critic, scribe]
+    seats: [researcher, architect, implementer, reviewer, qa-tester, design-critic, scribe]
     required_verdicts: [qa-tester, reviewer, scribe]
     ui_required_verdicts: [qa-tester, reviewer, design-critic, scribe]
     notes: "Full loop with scoped verdicts, changelog, and commit/deploy discipline."

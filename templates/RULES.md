@@ -6,7 +6,7 @@ The step sequence itself is in [LOOP.md](./LOOP.md); role → model mapping is i
 ## 1. Role discipline — the Orchestrator does NOT do the work (hard rule)
 The Orchestrator coordinates, routes, and arbitrates conflicting reports. It must NOT personally:
 - read/judge screenshots or UI composition   → that is the **Design Critic (Gemini)** seat
-- interpret test / behavioral verdicts        → that is the **QA (Codex)** seat
+- interpret test / behavioral verdicts        → that is the **QA (Claude Sonnet)** seat
 - review or write implementation code         → that is the **Reviewer / Implementer (Codex)** seats
 
 If a step needs eyes, hands, or a verdict, **spawn the assigned seat and relay its verdict** — do
@@ -28,28 +28,24 @@ bin/team.sh mode . M6 production "release milestone; full gates"
 
 - **tiny:** Orchestrator runs direct local checks. No cold seats unless the change stops being tiny.
 - **logic:** use Codex Implementer/Reviewer; add QA if behavior is not objectively covered by checks.
-- **ui:** use Gemini Frontend and QA behavioral screenshot; add Design Critic for composition/taste risk.
+- **ui:** use the Codex Implementer for the UI and QA behavioral screenshot; add Design Critic for composition/taste risk (run it in parallel once the shell exists).
 - **production:** run the full loop: research/architect if needed, implement, review, QA, design, scribe.
 - Escalate modes when uncertainty appears. Never downgrade a mode just to avoid a failing gate.
 - Folding a seat is fine when the chosen mode does not need it; record the mode so it is intentional.
 
-## 1b. Seat assignment by LAYER — Codex never writes UI (hard rule)
-Work is routed by layer, not lumped onto whoever is cheapest to spawn:
-- **UI / view layer (components, layout, CSS, responsive, micro-interaction) → Frontend (Gemini)**
-  via `bin/ask-gemini.sh`. Gemini is on the Pro subscription (not metered), is multimodal, and is
-  fast at frontend. The metered **Codex budget is reserved for logic** (engine/state/algorithms),
-  **code review, and QA** — NOT for styling. Codex laboring over CSS is the worst trade in the kit:
-  slow AND it burns the budget that should guard the logic seats.
-- **Design feedback loops DIRECTLY with Frontend (Gemini ⇄ Design Critic)** — never Design → Codex →
-  Frontend. Routing UI fixes through Codex adds a pointless hop and a cold re-read (observed cost on
-  the Tally build).
-- The only time UI may fold onto Codex is a project with **zero meaningful UI** (a CLI/library/pure
-  engine). Folding must be ANNOUNCED ("no Frontend seat — project has no UI"), same as folding the
-  Architect (§1). A single-screen app still gets the Gemini Frontend seat; "it's small" is not a
-  reason to make Codex style it.
-- Corollary (token discipline): keep one Codex SESSION per logical thread and resume it across
-  review→fix→re-review instead of a cold `--reset` each turn — cold re-reads of the same files are a
-  top avoidable Codex cost.
+## 1b. One persistent session per role (hard rule)
+Every seat is a fixed `(model, session)` pair, captured once and resumed by id each turn so it never
+re-derives context. `ask-codex.sh` keys the session on `CODEX_ROLE`; `ask-gemini.sh` on the role label.
+
+- **Implementer (Codex, session A)** — writes all code (logic + UI/CSS) and applies fixes.
+- **Reviewer (Codex, session B)** — finds bugs in the diff. A separate thread from the Implementer, so
+  it sees only diffs, never the writer's reasoning: an independent reviewer that stays warm.
+- **QA (Claude Sonnet, own session)** — runs the objective checks; independent of Codex and Gemini, and
+  cheap enough to keep the Opus Orchestrator out of testing. Spawn once, resume by name.
+- **Researcher + Design Critic (Gemini, own sessions)** — Researcher covers all external lookup (topics,
+  designs, references, libraries); the Critic judges screenshots.
+- Independence is structural (separate session), so each seat resumes warm — never collapse two roles
+  into one session.
 
 ## 2. Review convergence (owner: Code Reviewer = Codex)
 The reviewer is the bug *detector*, so the drive-to-zero loop lives here.
@@ -68,7 +64,7 @@ loop:
 - The Orchestrator arbitrates reviewer disagreements from first principles; a reviewer's tag is an
   input, not a verdict.
 
-## 3. QA gate (owner: QA / Tester = Codex)
+## 3. QA gate (owner: QA / Tester = Claude Sonnet)
 QA runs the project's **official, objective** checks — not vibes:
 
 ```
@@ -102,10 +98,12 @@ loop:
     - the change didn't REGRESS a neighbor (the classic: new control squishes an old readout)
   findings tagged P0/P1/P2 (+ "NONE" if clean)
   if no P0/P1 findings OR round > MAX_DESIGN_ROUNDS (default 3): break
-  Frontend (Gemini) fixes every P0/P1; round += 1
+  Implementer (Codex) fixes every P0/P1; round += 1
 ```
 - The Reviewer (Codex) sees the DIFF only — it cannot catch "the logo is covered." That is the
   Design Critic's job.
+- The Design Critic runs in PARALLEL with ongoing implementation once the UI shell exists — batch its
+  findings back to the Implementer rather than blocking every turn.
 - Trigger threshold: visual-risk UI changes loop at least once. A *major* UI change (new control,
   layout reflow) re-screenshots after each fix so a fix can't silently break a neighbor.
 - Converges on a round with only P2s or NONE. At the cap with P0/P1 left, the Orchestrator escalates.

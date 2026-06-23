@@ -6,7 +6,7 @@ A reusable toolkit + standard for running autonomous multi-agent builds (Claude 
 ```
 roles/        Canonical role briefs (one per teammate)
   orchestrator · researcher · architect · implementer · reviewer
-  qa-tester · design-critic · frontend-developer · scribe · file-finder
+  qa-tester · design-critic · scribe · file-finder
 templates/
   MODELS.md           model → role mapping + token strategy + runtimes
   LOOP.md             the adaptive milestone loop (the flow)
@@ -14,14 +14,14 @@ templates/
   prompts/            reusable seat brief templates
   CHANGELOG-template.md
 bin/
-  ask-codex.sh        drive one Codex turn (engine/logic impl + review), live + logged
-  ask-gemini.sh       drive one Gemini turn (frontend dev / design critic) via `agy`, live + logged
+  ask-codex.sh        drive one Codex turn (implement = session A / review = session B), live + logged
+  ask-gemini.sh       drive one Gemini turn (research / design critic) via `agy`, live + logged
   team.sh             tmux visualizer: feed + roster + build + live dev-server panes
   ui-review.mjs       Playwright: screenshot + console errors + behavioral asserts
 ```
 
-## The team (separate contexts, right-sized models)
-Orchestrator (Opus) routes; **Researcher** (Sonnet) looks OUTSIDE at the web; **Reviewer** (Codex) looks INSIDE at the code; **Implementer** (Codex) writes the engine/logic; **Frontend Developer** (Gemini) builds the UI; **Design Critic** (Gemini, multimodal) reads real screenshots and judges taste; QA (Codex) verifies behavior; Scribe (Haiku) keeps the audit log; File-Finder (Haiku) does cheap search. Codex seats run via `ask-codex.sh`, Gemini seats via `ask-gemini.sh` (`agy`, on the Google AI Pro subscription). `team.config.yaml` is the source of truth for role names, aliases, models, workflow modes, and gate profiles; see [MODELS.md](templates/MODELS.md).
+## The team (one persistent session per role, right-sized models)
+Orchestrator (Opus) routes; **Researcher** (Gemini) looks OUTSIDE at the web — topics, designs, references, anything online; **Implementer** (Codex, session A) writes all code, logic and UI, and applies fixes; **Reviewer** (Codex, session B — separate thread) looks INSIDE the diff and finds bugs; **QA** (Claude Sonnet) runs the official build/test/behavioral checks; **Design Critic** (Gemini, multimodal) reads real screenshots and judges taste in parallel; Scribe (Haiku) keeps the audit log; File-Finder (Haiku) does cheap search. Each role is one fixed `(model, session)` pair, resumed across turns — never re-introducing context. Codex seats run via `ask-codex.sh`, Gemini seats via `ask-gemini.sh` (`agy`, on the Google AI Pro subscription). `team.config.yaml` is the source of truth for role names, aliases, models, workflow modes, and gate profiles; see [MODELS.md](templates/MODELS.md).
 
 ## The loop
 The Orchestrator first chooses a workflow mode (`tiny`, `logic`, `ui`, or `production`), then routes

@@ -40,7 +40,7 @@ norm_seat() {
   case "$1" in
     qa|tester) printf 'qa-tester' ;;
     design|critic) printf 'design-critic' ;;
-    ui|frontend-developer) printf 'frontend' ;;
+    ui|frontend|frontend-developer) printf 'implementer' ;;
     review|code-reviewer) printf 'reviewer' ;;
     doc|docs) printf 'scribe' ;;
     lead) printf 'orchestrator' ;;
@@ -94,11 +94,11 @@ case "$CMD" in
     # role \t model \t state \t task \t updated_epoch
     cat > "$ROSTER" <<EOF
 orchestrator	Opus	routing	bootstrapping	$(now)
+researcher	Gemini	idle	—	$(now)
 architect	Opus	idle	—	$(now)
 implementer	Codex	idle	—	$(now)
 reviewer	Codex	idle	—	$(now)
-frontend	Gemini	idle	—	$(now)
-qa-tester	Codex	idle	—	$(now)
+qa-tester	Sonnet	idle	—	$(now)
 design-critic	Gemini	idle	—	$(now)
 scribe	Haiku	idle	—	$(now)
 EOF

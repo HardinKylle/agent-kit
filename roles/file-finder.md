@@ -11,6 +11,7 @@ Cheap code navigation: locate files, symbols, usages, and patterns so the expens
 ## Why cheap
 Search/navigation is mechanical and high-volume. Routing it to Haiku/Explore keeps Opus/Codex tokens for judgment and code. This is a core token-optimization lever:
 - Haiku/Explore → search & navigation
-- Sonnet → research & QA
-- Opus → orchestration & design judgment
+- Sonnet → QA
+- Opus → orchestration & arbitration
 - Codex → code & code review
+- Gemini → research & design critique
