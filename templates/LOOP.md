@@ -5,7 +5,7 @@ routes only the seats that add value. The full loop is the **production** path, 
 for every edit. Policies live in [RULES.md](./RULES.md). Role → model mapping is in [MODELS.md](./MODELS.md).
 
 ```
-0. MODE        Orchestrator records mode: tiny | logic | ui | production
+0. MODE        Orchestrator reads .team/ROUTING.md (mode-vs-kind history), then records mode
                team.sh mode . M3 ui "layout change; needs screenshot + QA"
 1. PLAN        Orchestrator → milestone breakdown (TaskCreate)
                Researcher (web) de-risks unknowns BEFORE code
@@ -16,7 +16,7 @@ for every edit. Policies live in [RULES.md](./RULES.md). Role → model mapping 
 5. QA          QA (Claude Sonnet) runs official checks + behavioral when required → RULES: QA gate
 5b. DESIGN     Design Critic (Gemini) ⇄ Implementer, parallel, for visual-risk UI → RULES: UI visual check
 6. GATE        counts ONLY when required scoped verdicts exist             → RULES 4c
-7. RECORD      Scribe/Orchestrator records change according to mode
+7. RECORD      Scribe/Orchestrator records change; logs mode outcome (team.sh outcome → routing)
 8. COMMIT      Conventional Commit → push → confirm auto-deploy (ask before push/deploy)
 ─────────────────────────────────────────────────────────────
 9. FINISH      final verify, README, auto-open / live URL
@@ -33,7 +33,8 @@ for every edit. Policies live in [RULES.md](./RULES.md). Role → model mapping 
 
 ## Per-step pointers
 - **Step 3 — Implement.** The Implementer (Codex, session A) writes LOGIC and UI/CSS and applies fixes,
-  all in one persistent thread resumed across review→fix — never cold `--reset` (RULES §1b).
+  all in one persistent thread resumed across review→fix — never cold `--reset` (RULES §1b). It reads
+  `.team/WEAKSPOTS.md` pre-flight — the project's recurring bug classes — to avoid known blind spots (RULES §2b).
 - **Step 4 — Review.** The Reviewer (Codex, session B — separate from the Implementer) hunts bugs and
   loops with the implementer to ~zero P0/P1. It only sees diffs, so it stays independent of the author.
   Convergence rule + round cap → RULES.md.
@@ -42,6 +43,8 @@ for every edit. Policies live in [RULES.md](./RULES.md). Role → model mapping 
 - **Step 5b — Design.** For visual-risk UI, the Design Critic (Gemini) actually LOOKS at the screenshot
   and loops until composition converges — a fix can't silently break a neighbor. It runs in parallel
   once the shell exists; findings batch back to the Implementer (Codex) → RULES.md.
+- **Verifiers classify.** Reviewer/QA/Design Critic record each confirmed P0/P1 by bug class
+  (`team.sh finding`); the Orchestrator runs `team.sh weakspots` to refresh `.team/WEAKSPOTS.md` (RULES §2b).
 - **Step 6 — Gate.** The Orchestrator gates on milestone-scoped verdicts in `.team/verdicts/`
   (`team.sh verdict` + `team.sh gate --milestone ...`) — never its own glance (role discipline + 4c → RULES.md).
 

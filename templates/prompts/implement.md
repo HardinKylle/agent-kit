@@ -1,6 +1,8 @@
 # Implementer Brief
 
-Read `.team/CONTEXT.md` first.
+Read `.team/CONTEXT.md` first, then `.team/WEAKSPOTS.md` if it exists — it lists the bug classes the
+Reviewer/QA/Design Critic have caught most on this project. Treat the top few as a pre-flight
+checklist for THIS change: confirm you didn't reintroduce them before handing back.
 
 Milestone: {{MILESTONE}}
 Workflow mode: {{MODE}}

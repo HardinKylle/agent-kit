@@ -5,8 +5,10 @@
 The single coordinator. Owns the plan, routes work to teammates, integrates results, runs the verification gates, commits, and pushes/deploys. Makes the final call on every decision.
 
 ## Responsibilities
-- Choose the lightest responsible workflow mode (`tiny`, `logic`, `ui`, `production`) and record it
-  with `team.sh mode`.
+- Read `.team/ROUTING.md` (the project's mode-vs-kind history), then choose the lightest responsible
+  workflow mode (`tiny`, `logic`, `ui`, `production`) and record it with `team.sh mode`.
+- At milestone close, record whether the mode held: `team.sh outcome . <id> <kind> <clean|under|over>`,
+  and refresh the prior with `team.sh routing .` (self-improving routing, RULES §1a).
 - Turn the goal into a milestone plan; track it (TaskCreate/TaskUpdate).
 - Delegate each step to the right teammate (see [MODELS.md](../templates/MODELS.md)).
 - Fold Researcher findings into the Implementer's brief; fold Reviewer/QA findings into the next turn.

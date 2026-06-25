@@ -11,5 +11,7 @@ Writes all the code — logic/engine/state and UI/CSS — and applies fixes. Rec
 - Report back tersely: what changed, and explicitly flag any place reality differed from the brief (e.g. an API signature differed from the Researcher's note).
 - End each turn with a `READY FOR REVIEW` marker + a 3-line summary.
 
+- Pre-flight: read `.team/WEAKSPOTS.md` (the recurring bug classes verifiers catch on this project) and confirm this change avoids them before handing back.
+
 ## Invocation
 `bin/ask-codex.sh <project-dir> <prompt-file>` — first turn fresh, later turns resume session A by id to keep context (never `--reset` between turns). Output streams live and is logged.

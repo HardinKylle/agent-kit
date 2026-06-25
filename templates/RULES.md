@@ -17,7 +17,8 @@ seats disagree. A milestone verdict must cite the ASSIGNED seat's report, never 
 own glance.
 
 ## 1a. Adaptive workflow mode — full team is available, not mandatory
-At the start of each milestone, the Orchestrator chooses and records the lightest responsible mode:
+At the start of each milestone, the Orchestrator reads `.team/ROUTING.md` (the project's own history of
+which mode held for which kind of change), then chooses and records the lightest responsible mode:
 
 ```
 bin/team.sh mode . M3 tiny       "docs-only wording fix"
@@ -32,6 +33,18 @@ bin/team.sh mode . M6 production "release milestone; full gates"
 - **production:** run the full loop: research/architect if needed, implement, review, QA, design, scribe.
 - Escalate modes when uncertainty appears. Never downgrade a mode just to avoid a failing gate.
 - Folding a seat is fine when the chosen mode does not need it; record the mode so it is intentional.
+
+**Close the loop (self-improving routing).** When a milestone finishes, record whether the chosen
+mode actually held — this is the routing counterpart to §2b's bug-class learning:
+```
+bin/team.sh outcome . M3 docs    clean  "tiny was right"
+bin/team.sh outcome . M5 ui      under  "started tiny, had to escalate to ui after Design Critic"
+bin/team.sh outcome . M6 logic   over   "ran production; everything trivially passed"
+```
+`clean` = mode held, `under` = too light (escalated), `over` = too heavy (overkill). The chosen mode is
+read from `modes.jsonl` automatically. `bin/team.sh routing .` aggregates these into `.team/ROUTING.md`
+— per change kind, which mode tends to hold — so next time the Orchestrator defaults from evidence, not
+a cold guess. No ML: it's the project's own history fed back into the routing decision.
 
 ## 1b. One persistent session per role (hard rule)
 Every seat is a fixed `(model, session)` pair, captured once and resumed by id each turn so it never
@@ -63,6 +76,26 @@ loop:
   Orchestrator escalates (re-scopes or decides) — never silently passes.
 - The Orchestrator arbitrates reviewer disagreements from first principles; a reviewer's tag is an
   input, not a verdict.
+
+## 2b. Self-improving briefs — classify findings, feed weak spots forward
+A caught bug is a free training signal; throwing it away after it opens/closes a gate wastes it. Every
+verifier classifies the bugs it catches, and the Implementer reads the aggregate before its next turn.
+
+- When the **Reviewer / QA / Design Critic** confirm a real P0/P1, they record its class:
+  ```
+  bin/team.sh finding . M4 reviewer P1 race          "stale closure in interval callback"
+  bin/team.sh finding . M4 qa-tester P0 error-handling "unhandled rejection crashes save"
+  bin/team.sh finding . M5 design-critic P0 ui        "wordmark clipped at 375px"
+  ```
+  Suggested classes: `logic | ui | race | error-handling | security | perf | scope`. Severity weights
+  P0=3, P1=2, P2=1. Records append to `.team/findings.jsonl`.
+- The Orchestrator regenerates the ranking each milestone (or after a heavy review round):
+  `bin/team.sh weakspots . ` writes `.team/WEAKSPOTS.md` — the top severity-weighted classes.
+- The **Implementer brief points at `.team/WEAKSPOTS.md`** (read it pre-flight): if `error-handling`
+  and `race` keep topping the list, those are the Implementer's blind spots — check them BEFORE handing
+  back. This sharpens the brief from the project's own history; no model retraining.
+- Keep it honest: only classify CONFIRMED findings (the Reviewer's own hard rule — verify against the
+  file first). Don't log speculative or dismissed-as-false-positive items, or the ranking rots.
 
 ## 3. QA gate (owner: QA / Tester = Claude Sonnet)
 QA runs the project's **official, objective** checks — not vibes:

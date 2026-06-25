@@ -12,6 +12,7 @@ INTERNAL code review — the bug *detector*. Reads the actual diff/files and cri
 - Check error handling, types, and security (input handling, injection, secrets).
 - Flag dead code, drift, and duplication.
 - Output a prioritized findings list (P0/P1/...). Confirm fixes on re-review.
+- Classify each confirmed P0/P1 by bug class (`team.sh finding`) so weak spots aggregate over time (RULES §2b).
 
 ## Hard rule
 Verify each finding against the actual file before reporting it. Dismiss false positives with a one-line note. Don't rubber-stamp.

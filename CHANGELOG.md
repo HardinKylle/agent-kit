@@ -2,6 +2,46 @@
 
 Maintained by the Scribe. One entry per change.
 
+## Self-improving routing — mode outcomes feed the next mode choice — 2026-06-23
+
+### What
+- Added `team.sh outcome <project> <milestone> <kind> <clean|under|over> [note]` — records whether the
+  mode the Orchestrator chose actually held (clean), was too light (under/escalated), or too heavy
+  (over). The chosen mode is read from `modes.jsonl` automatically; appends to `.team/routing.jsonl`.
+- Added `team.sh routing <project>` — aggregates outcomes per change kind into `.team/ROUTING.md`:
+  which mode tends to hold, and which keeps coming up under/over, with a recommended default per kind.
+- RULES §1a + LOOP step 0/7 + orchestrator role: the Orchestrator reads `.team/ROUTING.md` BEFORE
+  picking a mode and logs the outcome at milestone close.
+
+### Why
+- Mode selection was a cold guess every milestone; the chosen-mode→outcome signal was discarded. Feeding
+  it back lets the Orchestrator default from the project's own history instead of intuition — the routing
+  counterpart to §2b's bug-class learning. Heuristic feedback memory, not ML (Fugu Gap 1; ML router
+  judged not worth it at personal-kit data volume).
+
+### Who
+- Decision = user; encoded by Orchestrator (Opus).
+
+## Self-improving briefs — classified findings feed weak spots forward — 2026-06-23
+
+### What
+- Added `team.sh finding <project> <milestone> <seat> <P0|P1|P2> <class> [note]` — verifiers classify
+  each confirmed bug (suggested classes: logic|ui|race|error-handling|security|perf|scope) to
+  `.team/findings.jsonl`. Severity weights P0=3 P1=2 P2=1.
+- Added `team.sh weakspots <project> [--top N]` — aggregates findings into a severity-weighted ranking
+  and writes `.team/WEAKSPOTS.md`.
+- Reviewer / QA / Design-Critic briefs now log a classified `finding` for each real P0/P1; the
+  Implementer brief + role read `.team/WEAKSPOTS.md` pre-flight as a blind-spot checklist.
+- New RULES §2b (self-improving briefs); LOOP step-3/5b pointers updated.
+
+### Why
+- The Verifier signal was thrown away after opening/closing a gate. Classifying caught bugs turns each
+  one into a free training signal: recurring classes surface where the Implementer is weakest, and the
+  Implementer brief sharpens from the project's own history — no model retraining. (Fugu Gap 2.)
+
+### Who
+- Decision = user ("I like self improving system"); encoded by Orchestrator (Opus).
+
 ## Role/model consolidation — fewer seats, one session per role — 2026-06-23
 
 ### What
